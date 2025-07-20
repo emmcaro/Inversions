@@ -1,1 +1,221 @@
 
+Codi inversions
+
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8" />
+  <title>Entrenador d'Inversions d'Acords</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 40px; }
+    input {
+      padding: 12px;
+      width: 320px;
+      font-size: 18px;
+    }
+    button {
+      display: block;
+      width: 270px;
+      margin: 10px auto;
+      padding: 16px 0;
+      font-size: 18px;
+      cursor: pointer;
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    #acordPregunta {
+      font-size: 22px;
+      margin-bottom: 20px;
+    }
+    #resultat, #punts, #temps, #resum {
+      font-weight: bold;
+      margin-top: 20px;
+      font-size: 18px;
+    }
+    #temps { color: darkred; }
+  </style>
+</head>
+<body>
+
+  <h1>🎹 Endevina les inversions d'acords</h1>
+  <p id="acordPregunta">Carregant acord...</p>
+
+  <input type="text" id="resposta" placeholder="Ex: F A D" autocomplete="off" />
+
+  <button id="btnComprovar">Comprovar</button>
+  <button id="btnSeguent">Següent</button>
+
+  <p id="resultat"></p>
+  <p id="punts">Punts: 0</p>
+  <p id="temps">Temps restant: -</p>
+  <p id="resum"></p>
+
+  <audio id="soCorrecte" src="sounds/correcte.mp3" preload="auto"></audio>
+  <audio id="soError" src="sounds/error.mp3" preload="auto"></audio>
+  <audio id="soBenvinguda" src="sounds/benvinguda.mp3" preload="auto"></audio>
+
+  <script>
+    const acordsPerNivell = {
+      facil: {
+        "C": ["C", "E", "G"], "D": ["D", "F#", "A"], "E": ["E", "G#", "B"],
+        "F": ["F", "A", "C"], "G": ["G", "B", "D"], "A": ["A", "C#", "E"], "B": ["B", "D#", "F#"],
+        "Cm": ["C", "Eb", "G"], "Dm": ["D", "F", "A"], "Em": ["E", "G", "B"],
+        "Fm": ["F", "Ab", "C"], "Gm": ["G", "Bb", "D"], "Am": ["A", "C", "E"], "Bm": ["B", "D", "F#"]
+      },
+      mitja: {
+        "F#": ["F#", "A#", "C#"], "Bb": ["Bb", "D", "F"], "Eb": ["Eb", "G", "Bb"],
+        "Ab": ["Ab", "C", "Eb"], "Db": ["Db", "F", "Ab"], "Bbm": ["Bb", "Db", "F"],
+        "Ebm": ["Eb", "Gb", "Bb"], "F#m": ["F#", "A", "C#"], "Abm": ["Ab", "Cb", "Eb"]
+      },
+      dificil: {
+        "G#m": ["G#", "B", "D#"], "C#m": ["C#", "E", "G#"], "A#m": ["A#", "C#", "E#"],
+        "Dbm": ["Db", "Fb", "Ab"], "Cb": ["Cb", "Eb", "Gb"], "A#": ["A#", "C##", "E#"],
+        "C#": ["C#", "E#", "G#"], "D#m": ["D#", "F#", "A#"], "Gb": ["Gb", "Bb", "Db"]
+      }
+    };
+
+    function obtenirInversio(notes, numInversio) {
+      if (notes.length !== 3) return notes;
+      let inversio = notes.slice();
+      for (let i = 0; i < numInversio; i++) {
+        inversio.push(inversio.shift());
+      }
+      return inversio;
+    }
+
+    let acordActual = "", notesActuals = [], inversioActual = 0;
+    let punts = 0, totalRespostes = 0;
+    const tempsMaxim = 15;
+    let temps = tempsMaxim, intervalId = null;
+    let respostaJaComprovada = false, acordsMostrats = [];
+
+    const btnComprovar = document.getElementById("btnComprovar");
+    const btnSeguent = document.getElementById("btnSeguent");
+    const inputResposta = document.getElementById("resposta");
+    const soCorrecte = document.getElementById("soCorrecte");
+    const soError = document.getElementById("soError");
+    const soBenvinguda = document.getElementById("soBenvinguda");
+
+    function obtenirAcordPerDificultat() {
+      if (totalRespostes < 4) return acordsPerNivell.facil;
+      if (totalRespostes < 8) return acordsPerNivell.mitja;
+      return acordsPerNivell.dificil;
+    }
+
+    function nouAcord() {
+      if (totalRespostes >= 10) return;
+      const nivell = obtenirAcordPerDificultat();
+      const candidats = Object.keys(nivell).filter(n => !acordsMostrats.includes(n));
+      if (candidats.length === 0) {
+        acordsMostrats = [];
+        candidats.push(...Object.keys(nivell));
+      }
+      acordActual = candidats[Math.floor(Math.random() * candidats.length)];
+      const notesArrel = nivell[acordActual];
+      inversioActual = Math.floor(Math.random() * 3);
+      notesActuals = obtenirInversio(notesArrel, inversioActual);
+      acordsMostrats.push(acordActual);
+
+      const tipus = ["ESTAT FONAMENTAL", "PRIMERA INVERSIÓ", "SEGONA INVERSIÓ"][inversioActual];
+      document.getElementById("acordPregunta").innerHTML =
+        `Digues la <strong style="font-size: 24px; text-transform: uppercase;">${tipus}</strong> de l'acord de <strong>${acordActual}</strong>`;
+
+      document.getElementById("resultat").textContent = "";
+      inputResposta.value = "";
+      document.getElementById("temps").textContent = `Temps restant: ${tempsMaxim}s`;
+      temps = tempsMaxim;
+      clearInterval(intervalId);
+      intervalId = setInterval(actualitzarTemps, 1000);
+      respostaJaComprovada = false;
+
+      btnComprovar.disabled = false;
+      btnSeguent.disabled = false;
+      inputResposta.disabled = false;
+      inputResposta.focus();
+    }
+
+    function actualitzarTemps() {
+      temps--;
+      document.getElementById("temps").textContent = `Temps restant: ${temps}s`;
+      if (temps <= 0 && !respostaJaComprovada) {
+        clearInterval(intervalId);
+        soError.play();
+        mostrarResultat(false, `⏰ Temps esgotat! Resposta correcta: ${notesActuals.join(" ")}`);
+        totalRespostes++;
+        respostaJaComprovada = true;
+        bloquejarSiAcabat();
+        setTimeout(nouAcord, 3000);
+      }
+    }
+
+    function netejarNotes(arr) {
+      return arr.map(n => n.trim().toUpperCase());
+    }
+
+    function comprovar() {
+      if (respostaJaComprovada || temps <= 0 || totalRespostes >= 10) return;
+
+      const resposta = inputResposta.value.trim().split(/\s+/);
+      if (resposta.length !== 3) {
+        mostrarResultat(false, "⚠️ Introdueix EXACTAMENT 3 notes.");
+        return;
+      }
+
+      const respostaNeta = netejarNotes(resposta);
+      const correcteNeta = netejarNotes(notesActuals);
+
+      clearInterval(intervalId);
+      respostaJaComprovada = true;
+      totalRespostes++;
+
+      const respostaCorrecta = respostaNeta.join(" ") === correcteNeta.join(" ");
+
+      if (respostaCorrecta) {
+        punts++;
+        soCorrecte.play();
+        mostrarResultat(true, "✅ Correcte!");
+      } else {
+        soError.play();
+        mostrarResultat(false, `❌ Incorrecte. Resposta correcta: ${notesActuals.join(" ")}`);
+      }
+
+      bloquejarSiAcabat();
+    }
+
+    function mostrarResultat(correcte, missatge) {
+      const el = document.getElementById("resultat");
+      el.textContent = missatge;
+      el.style.color = correcte ? "green" : "red";
+    }
+
+    function bloquejarSiAcabat() {
+      document.getElementById("punts").textContent = `Punts: ${punts}`;
+      if (totalRespostes >= 10) {
+        document.getElementById("resum").textContent = `Test acabat! Has fet ${punts} punts de 10.`;
+        btnComprovar.disabled = true;
+        btnSeguent.disabled = true;
+        inputResposta.disabled = true;
+        document.getElementById("temps").textContent = `Temps restant: 0s`;
+      }
+    }
+
+    btnComprovar.addEventListener("click", comprovar);
+    btnSeguent.addEventListener("click", () => {
+      if (totalRespostes < 10) nouAcord();
+    });
+    inputResposta.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        btnComprovar.click();
+      }
+    });
+
+    window.onload = () => {
+      soBenvinguda.play().catch(() => {});
+      nouAcord();
+    };
+  </script>
+</body>
+</html>
